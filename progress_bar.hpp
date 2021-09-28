@@ -35,6 +35,8 @@ class ProgressBar {
     void ShowProgress(uint64_t progress) const;
     int GetConsoleWidth() const;
     int GetBarLength() const;
+    std::chrono::duration<double> RemainingExecutionTime(double progress_ratio) const;
+    std::string BeautifyDuration(std::chrono::duration<double> input_seconds) const;
 
     bool silent_;
     bool logging_mode_;
@@ -42,6 +44,7 @@ class ProgressBar {
     std::atomic<uint64_t> progress_ = {0};
     uint64_t frequency_update;
     std::ostream *out;
+    std::atomic<std::chrono::time_point<std::chrono::system_clock>> start_time_;
     mutable std::mutex mu_;
     mutable std::string buffer_;
 

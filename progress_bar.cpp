@@ -146,7 +146,8 @@ void ProgressBar::ShowProgress(uint64_t progress) const {
         os << std::put_time(std::localtime(&time), "[%F %T.")
            << std::setfill('0') << std::setw(3) << ms.count() << "]\t"
            << get_progress_summary(progress_ratio)
-           << ", " + std::to_string(progress) + "/" + std::to_string(total_) + '\n';
+           << ", " + std::to_string(progress) + "/" + std::to_string(total_)
+           << ", " + BeautifyDuration(RemainingExecutionTime(progress_ratio)) + " remaining" + '\n';
         *out << os.str() << std::flush;
         return;
     }
@@ -167,7 +168,8 @@ void ProgressBar::ShowProgress(uint64_t progress) const {
                         + std::string(size_t(bar_size * progress_ratio), unit_bar_)
                         + std::string(bar_size - size_t(bar_size * progress_ratio), unit_space_)
                       + "] " + get_progress_summary(progress_ratio)
-                      + ", " + std::to_string(progress) + "/" + std::to_string(total_) + '\r';
+                      + ", " + std::to_string(progress) + "/" + std::to_string(total_)
+                      + ", " + BeautifyDuration(RemainingExecutionTime(progress_ratio)) + " remaining" + '\r';
 
         *out << buffer_ << std::flush;
 
@@ -183,6 +185,9 @@ ProgressBar& ProgressBar::operator++() {
 }
 
 ProgressBar& ProgressBar::operator+=(uint64_t delta) {
+    if (progress_.load() == 0)
+        start_time_.store(std::chrono::system_clock::now());
+
     if (silent_ || !delta)
         return *this;
 
@@ -201,4 +206,49 @@ ProgressBar& ProgressBar::operator+=(uint64_t delta) {
         *out << std::endl;
 
     return *this;
+}
+
+std::chrono::duration<double> ProgressBar::RemainingExecutionTime(double progress_ratio) const {
+    // epsilon to avoid division by zero
+    if (progress_ratio == 0)
+        progress_ratio = 1e-2;
+
+    auto now = std::chrono::system_clock::now();
+    std::chrono::duration<double> diff = now - start_time_.load();
+    double total_s = 1 / progress_ratio * diff.count();
+    return std::chrono::duration<double>(total_s - progress_ratio * total_s);
+}
+
+// from https://stackoverflow.com/questions/22590821/convert-stdduration-to-human-readable-time
+std::string ProgressBar::BeautifyDuration(std::chrono::duration<double> input_seconds) const {
+    using namespace std::chrono;
+    typedef duration<int, std::ratio<86400>> days;
+    auto d = duration_cast<days>(input_seconds);
+    input_seconds -= d;
+    auto h = duration_cast<hours>(input_seconds);
+    input_seconds -= h;
+    auto m = duration_cast<minutes>(input_seconds);
+    input_seconds -= m;
+
+    auto dc = d.count();
+    auto hc = h.count();
+    auto mc = m.count();
+
+    std::stringstream ss;
+    ss.fill('0');
+    if (dc) {
+        ss << d.count() << "d";
+    }
+    if (dc || hc) {
+        if (dc) { ss << std::setw(2); } //pad if second set of numbers
+        ss << h.count() << "h";
+    }
+    if (dc || hc || mc) {
+        if (dc || hc) { ss << std::setw(2); }
+        ss << m.count() << "m";
+    }
+    if (dc || hc || mc) { ss << std::setw(2); }
+    ss << input_seconds.count() << 's';
+
+    return ss.str();
 }
